@@ -1,0 +1,151 @@
+#include <Adafruit_NeoPixel.h>
+
+#define PIN 5
+Adafruit_NeoPixel strip = Adafruit_NeoPixel(5, PIN, NEO_GRB + NEO_KHZ800);
+
+#include <SPI.h>
+#include <FreeStack.h>
+
+//Add the SdFat Libraries
+#include <SdFat.h>
+
+//and the MP3 Shield Library
+#include <vs1053_SdFat.h>
+
+// Below is not needed if interrupt driven. Safe to remove if not using.
+#if defined(USE_MP3_REFILL_MEANS) && USE_MP3_REFILL_MEANS == USE_MP3_Timer1
+  #include <TimerOne.h>
+#elif defined(USE_MP3_REFILL_MEANS) && USE_MP3_REFILL_MEANS == USE_MP3_SimpleTimer
+  #include <SimpleTimer.h>
+#endif
+
+SdFat sd;
+vs1053 MP3player;
+
+const int trigPin = 3;
+const int echoPin = 4;
+
+long duration;
+int distance;
+
+void setup() {
+  uint8_t result;
+  strip.begin();
+  strip.setBrightness(50);
+  strip.show();
+  pinMode(trigPin, OUTPUT);
+  pinMode(echoPin, INPUT);
+  Serial.begin(115200);
+
+   //Initialize the SdCard.
+  if(!sd.begin(SD_SEL, SPI_FULL_SPEED)) sd.initErrorHalt();
+  // depending upon your SdCard environment, SPI_HAVE_SPEED may work better.
+  if(!sd.chdir("/")) sd.errorHalt("sd.chdir");
+
+  //Initialize the MP3 Player Shield
+  result = MP3player.begin();
+  //check result, see readme for error codes.
+  if(result != 0) {
+    Serial.print(F("Error code: "));
+    Serial.print(result);
+    Serial.println(F(" when trying to start MP3 player"));
+    if( result == 6 ) {
+      Serial.println(F("Warning: patch file not found, skipping.")); // can be removed for space, if needed.
+      Serial.println(F("Use the \"d\" command to verify SdCard can be read")); // can be removed for space, if needed.
+    }
+  }
+#if defined(__BIOFEEDBACK_MEGA__) // or other reasons, of your choosing.
+  // Typically not used by most shields, hence commented out.
+  Serial.println(F("Applying ADMixer patch."));
+  if(MP3player.ADMixerLoad("admxster.053") == 0) {
+    Serial.println(F("Setting ADMixer Volume."));
+    MP3player.ADMixerVol(-3);
+  }
+#endif
+
+  help();
+
+}
+
+void loop() {
+  strip.Color(255,255,255);
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(2);
+
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+
+  duration = pulseIn(echoPin, HIGH);
+  distance = duration * 0.034/2;
+
+  Serial.print("Distance: ");
+  Serial.println(distance);
+
+  if(distance < 30){
+    colorWipe(strip.Color(153, 50, 204), 50); // purple lights 
+  }
+
+  if(distance > 30 && distance < 50){
+    colorWipe(strip.Color(255, 69, 0), 50); // dark orange
+  }
+
+  if(distance > 50 && distance < 70){
+    colorWipe(strip.Color(0, 255, 0), 50);
+  }
+
+  else{
+    //ask how to get them to turn off when out of range
+    strip.setPixelColor(5,0,0,0,0);
+    strip.show();
+  }
+
+  if(distance < 70){
+    MP3player.playTrack(1);
+  }
+
+}
+
+void colorWipe(uint32_t c, uint8_t wait) {
+  for(uint16_t i=0; i<strip.numPixels(); i++) {
+    strip.setPixelColor(i, c);
+    strip.show();
+    delay(wait);
+  }
+}
+
+void help() {
+  Serial.println(F("Arduino vs1053 Library Example:"));
+  Serial.println(F(" courtesy of Bill Porter & Michael P. Flaga"));
+  Serial.println(F("COMMANDS:"));
+  Serial.println(F(" [1-9] to play a track"));
+  Serial.println(F(" [f] play track001.mp3 by filename example"));
+  Serial.println(F(" [F] same as [f] but with initial skip of 2 second"));
+  Serial.println(F(" [s] to stop playing"));
+  Serial.println(F(" [d] display directory of SdCard"));
+  Serial.println(F(" [+ or -] to change volume"));
+  Serial.println(F(" [> or <] to increment or decrement play speed by 1 factor"));
+  Serial.println(F(" [i] retrieve current audio information (partial list)"));
+  Serial.println(F(" [p] to pause."));
+  Serial.println(F(" [t] to toggle sine wave test"));
+  Serial.println(F(" [S] Show State of Device."));
+  Serial.println(F(" [b] Play a MIDI File Beep"));
+#if !defined(__AVR_ATmega32U4__)
+  Serial.println(F(" [e] increment Spatial EarSpeaker, default is 0, wraps after 4"));
+  Serial.println(F(" [m] perform memory test. reset is needed after to recover."));
+  Serial.println(F(" [M] Toggle between Mono and Stereo Output."));
+  Serial.println(F(" [g] Skip to a predetermined offset of ms in current track."));
+  Serial.println(F(" [k] Skip a predetermined number of ms in current track."));
+  Serial.println(F(" [r] resumes play from 2s from begin of file"));
+  Serial.println(F(" [R] Resets and initializes VS10xx chip."));
+  Serial.println(F(" [O] turns OFF the VS10xx into low power reset."));
+  Serial.println(F(" [o] turns ON the VS10xx out of low power reset."));
+  Serial.println(F(" [D] to toggle SM_DIFF between inphase and differential output"));
+  Serial.println(F(" [V] Enable VU meter Test."));
+  Serial.println(F(" [B] Increament bass frequency by 10Hz"));
+  Serial.println(F(" [C] Increament bass amplitude by 1dB"));
+  Serial.println(F(" [T] Increament treble frequency by 1000Hz"));
+  Serial.println(F(" [E] Increament treble amplitude by 1dB"));
+#endif
+  Serial.println(F(" [h] this help"));
+}
